@@ -25,9 +25,12 @@
 #define minute_hand_colour "#664422"
 #define second_hand_colour "#886644"
 #define clock_face_colour  "#444444"
-#define hh_l 60
+#define hh_l 60             /* length of the hands */
 #define mh_l 75
 #define sh_l 88
+#define hh_w 8              /* Thickness of the hands */
+#define mh_w 6
+#define sh_w 3
 
 time_t t;
 struct tm *tmval;
@@ -144,19 +147,19 @@ int main(int argc, char ** argv){
 	
 	/* create the hour_h GC to draw the hour hand */
 	values.foreground = getcolor(hour_hand_colour);
-	values.line_width = 6;
+	values.line_width = hh_w;
 	values.line_style = LineSolid;
 	hour_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
 
 	/* create the min_h GC to draw the minute hand */
 	values.foreground = getcolor(minute_hand_colour);
-	values.line_width = 4;
+	values.line_width = mh_w;
 	values.line_style = LineSolid;
 	min_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
 
 	/* create the sec_h GC to draw the second hand */
 	values.foreground = getcolor(second_hand_colour);
-	values.line_width = 2;
+	values.line_width = sh_w;
 	values.line_style = LineSolid;
 	sec_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
 
