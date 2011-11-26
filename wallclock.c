@@ -24,13 +24,15 @@
 #define hour_hand_colour   "#442211"
 #define minute_hand_colour "#664422"
 #define second_hand_colour "#886644"
-#define clock_face_colour  "#444444"
+#define clock_face_colour  "#664422"
+#define tick_mark_colour   "#442211"
 #define hh_l 60             /* length of the hands */
 #define mh_l 75
 #define sh_l 88
 #define hh_w 8              /* Thickness of the hands */
 #define mh_w 6
 #define sh_w 3
+#define tm_w 6
 
 time_t t;
 struct tm *tmval;
@@ -41,7 +43,7 @@ static int angle1, angle2, angle3;
 
 static Window win;
 static Display *dis;
-static GC hour_h, min_h, sec_h, face_cl;
+static GC hour_h, min_h, sec_h, face_cl, tick_m;
 
 /* save from computing sine(x), use pre-computed values
  * There are *100, to avoid using floats */
@@ -67,12 +69,12 @@ int drawface() {
     center_y = (square/2)+((height-square)/2);
 
     XClearWindow(dis, win);
-    XDrawArc(dis, win, face_cl, (width-square)/2, (height-square)/2, square-4, square-4, 0, 360*64);
+    XDrawArc(dis, win, face_cl, center_x-(square/2), center_y-(square/2), square, square, 0, 360*64);
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
 	    angle1  = sine[i]*(square-2);
         angle2  = -sine[(i+15)%60]*(square-2);
-        XDrawLine(dis,win,hour_h, (angle1*9)/20000 + center_x,
+        XDrawLine(dis,win,tick_m, (angle1*9)/20000 + center_x,
          (angle2*9)/20000 + center_y, (angle1*10)/20000 + center_x,
           (angle2*10)/20000 + center_y);
     }
@@ -169,6 +171,12 @@ int main(int argc, char ** argv){
 	values.line_style = LineSolid;
 	face_cl = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
 
+	/* create the tick_m GC to draw the tick marks */
+	values.foreground = getcolor(tick_mark_colour);
+	values.line_width = tm_w;
+	values.line_style = LineSolid;
+	tick_m = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+
 	XSelectInput(dis, win, ButtonPressMask|StructureNotifyMask|ExposureMask );
 
 	XMapWindow(dis, win);
@@ -191,9 +199,9 @@ int main(int argc, char ** argv){
             switch(ev.type){
 		    case Expose:
 		        if(width >= height)
-		            square = height;
+		            square = height-4;
 		        else
-		            square = width;
+		            square = width-4;
    		    	drawface();
 		    	break;
 		    case ConfigureNotify:
