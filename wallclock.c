@@ -28,7 +28,8 @@
 #define tick_mark_colour   "#442211"
 #define hh_l 60             /* length of the hands */
 #define mh_l 75
-#define sh_l 88
+#define sh_l 91
+#define tm_l 93             /* length of tick marks */
 #define hh_w 8              /* Thickness of the hands */
 #define mh_w 6
 #define sh_w 3
@@ -74,9 +75,9 @@ int drawface() {
     for(i=0;i<60;i+=5) {
 	    angle1  = sine[i]*(square-2);
         angle2  = -sine[(i+15)%60]*(square-2);
-        XDrawLine(dis,win,tick_m, (angle1*9)/20000 + center_x,
-         (angle2*9)/20000 + center_y, (angle1*10)/20000 + center_x,
-          (angle2*10)/20000 + center_y);
+        XDrawLine(dis,win,tick_m, (angle1*tm_l)/200000 + center_x,
+         (angle2*tm_l)/200000 + center_y, (angle1*100)/200000 + center_x,
+          (angle2*100)/200000 + center_y);
     }
     return(0);
 }
