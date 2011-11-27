@@ -2,4 +2,6 @@ Wallclock
 
 It's a light, transparent analogue clock.
 
+There's defines at the top of the c file to make changing colours and sizes easy.
+
 Showing how to have a transparent window that's updatable.
