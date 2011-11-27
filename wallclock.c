@@ -21,11 +21,11 @@
 #include <time.h>
 
 #define clockupdate 1        /* 1=Show second hand */
-#define hour_hand_colour   "#442211"
-#define minute_hand_colour "#664422"
-#define second_hand_colour "#886644"
-#define clock_face_colour  "#664422"
-#define tick_mark_colour   "#442211"
+#define hour_hand_colour   "#446688"
+#define minute_hand_colour "#6688aa"
+#define second_hand_colour "#88aabb"
+#define clock_face_colour  "#6688aa"
+#define tick_mark_colour   "#446688"
 #define hh_l 60             /* length of the hands */
 #define mh_l 75
 #define sh_l 91
