@@ -2,7 +2,7 @@
 *
 *  This program is free software: you can redistribute it and/or modify
 *  it under the terms of the GNU General Public License as published by
-*  the Free Software Foundation, either version 3 of the License, or
+*  the Free Software Foundation, either version 2 of the License, or
 *  (at your option) any later version.
 *  This program is distributed in the hope that it will be useful,
 *  but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -20,6 +20,11 @@
 #include <string.h>
 #include <time.h>
 
+#define WIDTH 100
+#define HEIGHT 100
+#define POS_X 1250
+#define POS_Y 650
+#define OVERRIDE 0 // 1= Don't 0=Set overriderediect
 #define clockupdate 1        /* 1=Show second hand */
 #define hour_hand_colour   "#446688"
 #define minute_hand_colour "#6688aa"
@@ -30,13 +35,17 @@
 #define mh_l 75
 #define sh_l 91
 #define tm_l 93             /* length of tick marks */
-#define hh_w 8              /* Thickness of the hands */
-#define mh_w 6
-#define sh_w 3
-#define tm_w 6
+#define hh_w 4              /* Thickness of the hands */
+#define mh_w 2
+#define sh_w 1
+#define tm_w 3
 
 time_t t;
 struct tm *tmval;
+
+struct ti {
+   int s_x,s_y,m_x,m_y,h_x,h_y;
+} at;
 
 static int square, center_x, center_y;
 static int i, width, height;
@@ -83,9 +92,6 @@ int drawface() {
 }
 
 int update_hands() {
-    struct ti {
-       int s_x,s_y,m_x,m_y,h_x,h_y;
-    } at;
     /* get the current time */
     t=time(0);
     tmval = localtime(&t);
@@ -100,22 +106,22 @@ int update_hands() {
     at.m_x =   sine[angle2] * square  *mh_l/200000 + center_x;
     at.m_y = -(sine[(angle2+15)%60])* square *mh_l/200000 + center_y;
 
-    if (clockupdate == 1) {
-       angle3 = tmval->tm_sec;
-       at.s_x =   sine[angle3] * square  *sh_l/200000 + center_x;
-       at.s_y = -(sine[(angle3+15)%60])* square *sh_l/200000 + center_y;
-    } else {
-       at.s_x = at.s_y = 0;
-    }
 	drawface();
      for(i=-1;i<2;i++)
 	for(j=-1;j<2;j++)
 	{
 	   XDrawLine(dis,win,hour_h,center_x+i,center_y+j,at.h_x,at.h_y);
 	   XDrawLine(dis,win,min_h,center_x+i,center_y+j,at.m_x,at.m_y);
-	}
-     if (clockupdate == 1)
-	XDrawLine(dis,win,sec_h,center_x,center_y,at.s_x,at.s_y);
+    }
+
+    if (clockupdate == 1) {
+       angle3 = tmval->tm_sec;
+       at.s_x =   sine[angle3] * square  *sh_l/200000 + center_x;
+       at.s_y = -(sine[(angle3+15)%60])* square *sh_l/200000 + center_y;
+       XDrawLine(dis,win,sec_h,center_x,center_y,at.s_x,at.s_y);
+    } else {
+       at.s_x = at.s_y = 0;
+    }
 	XFlush(dis);
 	return(0);
 
@@ -136,12 +142,14 @@ int main(int argc, char ** argv){
 	screen_num = DefaultScreen(dis);
 	background = None; //BlackPixel(dis, screen_num);
 	border = WhitePixel(dis, screen_num);
-	width = (XDisplayWidth(dis, screen_num)/4);
-	height = (XDisplayHeight(dis, screen_num)/4);
+	if(WIDTH > 0) width = WIDTH;
+	else width = (XDisplayWidth(dis, screen_num)/4);
+	if(HEIGHT > 0 ) height = HEIGHT;
+	else height = (XDisplayHeight(dis, screen_num)/4);
 	XGCValues values;
 
-	win = XCreateSimpleWindow(dis, DefaultRootWindow(dis),width*3-20,
-			height*3-20,height,height,0,border,background);
+	win = XCreateSimpleWindow(dis, DefaultRootWindow(dis),POS_X,
+			POS_Y,height,height,0,border,background);
 
 	XSetWindowBackgroundPixmap(dis, win, ParentRelative);
 
@@ -152,13 +160,15 @@ int main(int argc, char ** argv){
 	values.foreground = getcolor(hour_hand_colour);
 	values.line_width = hh_w;
 	values.line_style = LineSolid;
-	hour_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+	values.cap_style = CapRound;
+	hour_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
 	/* create the min_h GC to draw the minute hand */
 	values.foreground = getcolor(minute_hand_colour);
 	values.line_width = mh_w;
 	values.line_style = LineSolid;
-	min_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+	values.cap_style = CapRound;
+	min_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
 	/* create the sec_h GC to draw the second hand */
 	values.foreground = getcolor(second_hand_colour);
@@ -178,9 +188,15 @@ int main(int argc, char ** argv){
 	values.line_style = LineSolid;
 	tick_m = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
 
+    if(OVERRIDE == 0) {
+        XSetWindowAttributes att;
+        att.override_redirect = True;
+        XChangeWindowAttributes( dis, win, CWOverrideRedirect, &att );
+	}
 	XSelectInput(dis, win, ButtonPressMask|StructureNotifyMask|ExposureMask );
 
 	XMapWindow(dis, win);
+	update_hands();
 
 	while(1) {
         FD_ZERO(&in_fds);
@@ -188,7 +204,8 @@ int main(int argc, char ** argv){
 
         // Set our timer.  One second sounds good.
         tv.tv_usec = 0;
-        tv.tv_sec = 1;
+        if(clockupdate == 1) tv.tv_sec = 1;
+        else tv.tv_sec = 30;
         // Wait for X Event or a Timer
         if (!(select(x11_fd+1, &in_fds, 0, 0, &tv))) {
             update_hands();
@@ -214,6 +231,11 @@ int main(int argc, char ** argv){
 		    	break;
             /* exit if a button is pressed inside the window */
 		    case ButtonPress:
+		        XFreeGC(dis, hour_h);
+		        XFreeGC(dis, min_h);
+		        XFreeGC(dis, sec_h);
+		        XFreeGC(dis, face_cl);
+		        XFreeGC(dis, tick_m);
 		    	XCloseDisplay(dis);
 		    	return(0);
 		    }
