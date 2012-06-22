@@ -1,4 +1,4 @@
-/* A simple transparent analogue clock
+/* A simple transparent analogue clock with double buffering
 *
 *  This program is free software: you can redistribute it and/or modify
 *  it under the terms of the GNU General Public License as published by
@@ -15,17 +15,14 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xresource.h>
+#include <X11/Xatom.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
-#define WIDTH 100
-#define HEIGHT 100
-#define POS_X 1250
-#define POS_Y 650
-#define OVERRIDE 0 // 1= Don't 0=Set overriderediect
 #define clockupdate 1        /* 1=Show second hand */
+#define background_colour  "#000000"
 #define hour_hand_colour   "#446688"
 #define minute_hand_colour "#6688aa"
 #define second_hand_colour "#88aabb"
@@ -35,10 +32,10 @@
 #define mh_l 75
 #define sh_l 91
 #define tm_l 93             /* length of tick marks */
-#define hh_w 4              /* Thickness of the hands */
-#define mh_w 2
-#define sh_w 1
-#define tm_w 3
+#define hh_w 8              /* Thickness of the hands */
+#define mh_w 6
+#define sh_w 3
+#define tm_w 6
 
 time_t t;
 struct tm *tmval;
@@ -48,12 +45,15 @@ struct ti {
 } at;
 
 static int square, center_x, center_y;
-static int i, width, height;
+static int i, width, height, win_x, win_y;
 static int angle1, angle2, angle3;
 
-static Window win;
+static Pixmap root_pixmap;
+static Drawable win;
+static Window realwin;
+static Window root;
 static Display *dis;
-static GC hour_h, min_h, sec_h, face_cl, tick_m;
+static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc;
 
 /* save from computing sine(x), use pre-computed values
  * There are *100, to avoid using floats */
@@ -74,11 +74,45 @@ unsigned long getcolor(const char* color) {
     return c.pixel;
 }
 
+void get_background() {
+    
+    static Atom id = None;
+    const char* pixmap_id_names[] = {
+        "_XROOTPMAP_ID", "ESETROOT_PMAP_ID", NULL
+    };
+    int j = 0;
+    
+    for (j=0; (pixmap_id_names[j] && (None == root_pixmap)); j++) {
+
+        if (None == id) {
+            id = XInternAtom(dis, pixmap_id_names[j], True);
+        }
+
+        if (None != id) {
+            Atom actual_type = None;
+            int actual_format = 0;
+            unsigned long nitems = 0;
+            unsigned long bytes_after = 0;
+            unsigned char *properties = NULL;
+            int rc = 0;
+
+            rc = XGetWindowProperty(dis, root, id, 0, 1, False,
+                    XA_PIXMAP, &actual_type, &actual_format, &nitems,
+                    &bytes_after, &properties);
+
+            if (Success == rc && properties) {
+                root_pixmap = *((Pixmap*)properties);
+            }
+        }
+    }
+}
+
 int drawface() {
     center_x = (square/2)+((width-square)/2);
     center_y = (square/2)+((height-square)/2);
 
-    XClearWindow(dis, win);
+	XCopyArea(dis, root_pixmap, win, hour_h, win_x, win_y, width, height, 0, 0);
+	//XFillRectangle(dis, win, bg_gc, 0, 0, width, height);
     XDrawArc(dis, win, face_cl, center_x-(square/2), center_y-(square/2), square, square, 0, 360*64);
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
@@ -97,6 +131,7 @@ int update_hands() {
     tmval = localtime(&t);
     int i,j;
 
+    XFillArc(dis, win, bg_gc, 0, 0, width, height, 0, 360*64);
     /* calculate the positions of the hands */
     angle1 = (tmval->tm_hour%12)*5 + tmval->tm_min/12;
     at.h_x =   sine[angle1] * square  *hh_l/200000 + center_x;
@@ -122,6 +157,7 @@ int update_hands() {
     } else {
        at.s_x = at.s_y = 0;
     }
+    XCopyArea(dis, win, realwin, hour_h, 0, 0, width, height, 0, 0);
 	XFlush(dis);
 	return(0);
 
@@ -129,7 +165,7 @@ int update_hands() {
 
 int main(int argc, char ** argv){
 	int screen_num;
-	unsigned long background, border;
+	unsigned long border;
 	XEvent ev;
 	int x11_fd;
     fd_set in_fds;
@@ -140,20 +176,22 @@ int main(int argc, char ** argv){
 	if (!dis) {fprintf(stderr, "unable to connect to display");return 1;}
 
 	screen_num = DefaultScreen(dis);
-	background = None; //BlackPixel(dis, screen_num);
+    root = RootWindow(dis,screen_num);
+    get_background();
+	//background = None; //BlackPixel(dis, screen_num);
 	border = WhitePixel(dis, screen_num);
-	if(WIDTH > 0) width = WIDTH;
-	else width = (XDisplayWidth(dis, screen_num)/4);
-	if(HEIGHT > 0 ) height = HEIGHT;
-	else height = (XDisplayHeight(dis, screen_num)/4);
+	width = (XDisplayWidth(dis, screen_num)/4);
+	height = (XDisplayHeight(dis, screen_num)/4);
 	XGCValues values;
 
-	win = XCreateSimpleWindow(dis, DefaultRootWindow(dis),POS_X,
-			POS_Y,height,height,0,border,background);
+	win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
 
-	XSetWindowBackgroundPixmap(dis, win, ParentRelative);
+	realwin = XCreateSimpleWindow(dis, root, width,
+			height,height,height,0,border,ParentRelative);
 
-	// This returns the FD of the X11 display (or something like that)
+	//XSetWindowBackgroundPixmap(dis, realwin, ParentRelative);
+
+	// This returns the FD of the X11 display
     x11_fd = ConnectionNumber(dis);
 	
 	/* create the hour_h GC to draw the hour hand */
@@ -161,42 +199,44 @@ int main(int argc, char ** argv){
 	values.line_width = hh_w;
 	values.line_style = LineSolid;
 	values.cap_style = CapRound;
-	hour_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
+	hour_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
 	/* create the min_h GC to draw the minute hand */
 	values.foreground = getcolor(minute_hand_colour);
 	values.line_width = mh_w;
 	values.line_style = LineSolid;
 	values.cap_style = CapRound;
-	min_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
+	min_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
 	/* create the sec_h GC to draw the second hand */
 	values.foreground = getcolor(second_hand_colour);
 	values.line_width = sh_w;
 	values.line_style = LineSolid;
-	sec_h = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+	values.cap_style = CapRound;
+	sec_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
 	/* create the face_cl GC to draw the clock face */
 	values.foreground = getcolor(clock_face_colour);
 	values.line_width = 4;
 	values.line_style = LineSolid;
-	face_cl = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+	face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
 	/* create the tick_m GC to draw the tick marks */
 	values.foreground = getcolor(tick_mark_colour);
 	values.line_width = tm_w;
 	values.line_style = LineSolid;
-	tick_m = XCreateGC(dis, win, GCForeground|GCLineWidth|GCLineStyle,&values);
+	tick_m = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
-    if(OVERRIDE == 0) {
-        XSetWindowAttributes att;
-        att.override_redirect = True;
-        XChangeWindowAttributes( dis, win, CWOverrideRedirect, &att );
-	}
-	XSelectInput(dis, win, ButtonPressMask|StructureNotifyMask|ExposureMask );
+	/* create the bg_gc GC to draw the background */
+	values.foreground = getcolor(background_colour);
+	values.line_width = 8;
+	values.line_style = LineSolid;
+	bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
-	XMapWindow(dis, win);
-	update_hands();
+	XSelectInput(dis, realwin, ButtonPressMask|StructureNotifyMask|ExposureMask );
+
+	XMapWindow(dis, realwin);
+	//update_hands();
 
 	while(1) {
         FD_ZERO(&in_fds);
@@ -220,14 +260,23 @@ int main(int argc, char ** argv){
 		            square = height-4;
 		        else
 		            square = width-4;
+   		    	XFreePixmap(dis, win);
+   		        win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
    		    	drawface();
+   		    	update_hands();
 		    	break;
 		    case ConfigureNotify:
+                win_x = ev.xconfigure.x;
+                win_y = ev.xconfigure.y;
 		    	if (width != ev.xconfigure.width || height != ev.xconfigure.height) {
 		    		width = ev.xconfigure.width;
 		    		height = ev.xconfigure.height;
-		    		XClearWindow(dis, win);
+		    		drawface();
+		    		//update_hands();
 		    	}
+		    	break;
+		    case MapNotify:
+		    	update_hands();
 		    	break;
             /* exit if a button is pressed inside the window */
 		    case ButtonPress:
@@ -236,6 +285,7 @@ int main(int argc, char ** argv){
 		        XFreeGC(dis, sec_h);
 		        XFreeGC(dis, face_cl);
 		        XFreeGC(dis, tick_m);
+		        XFreeGC(dis, bg_gc);
 		    	XCloseDisplay(dis);
 		    	return(0);
 		    }
