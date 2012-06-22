@@ -256,10 +256,7 @@ int main(int argc, char ** argv){
             XNextEvent(dis, &ev);
             switch(ev.type){
 		    case Expose:
-		        if(width >= height)
-		            square = height-4;
-		        else
-		            square = width-4;
+		        square = (width >= height) ? height-4 : width-4;
    		    	XFreePixmap(dis, win);
    		        win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
    		    	drawface();
@@ -280,6 +277,7 @@ int main(int argc, char ** argv){
 		    	break;
             /* exit if a button is pressed inside the window */
 		    case ButtonPress:
+		        if(ev.xbutton.button != Button3) continue;
 		        XFreeGC(dis, hour_h);
 		        XFreeGC(dis, min_h);
 		        XFreeGC(dis, sec_h);
