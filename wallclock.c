@@ -163,7 +163,7 @@ int update_hands() {
 
 }
 
-int main(int argc, char ** argv){
+int main(){
 	int screen_num;
 	unsigned long border;
 	XEvent ev;
@@ -188,8 +188,6 @@ int main(int argc, char ** argv){
 
 	realwin = XCreateSimpleWindow(dis, root, width,
 			height,height,height,0,border,ParentRelative);
-
-	//XSetWindowBackgroundPixmap(dis, realwin, ParentRelative);
 
 	// This returns the FD of the X11 display
     x11_fd = ConnectionNumber(dis);
@@ -236,7 +234,7 @@ int main(int argc, char ** argv){
 	XSelectInput(dis, realwin, ButtonPressMask|StructureNotifyMask|ExposureMask );
 
 	XMapWindow(dis, realwin);
-	//update_hands();
+    XStoreName(dis, realwin, "WallClock");
 
 	while(1) {
         FD_ZERO(&in_fds);
