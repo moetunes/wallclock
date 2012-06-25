@@ -21,14 +21,20 @@
 #include <string.h>
 #include <time.h>
 
-#define clockupdate 1        /* 1=Show second hand */
+#define TRANSPARENT 0        /* 1=Use background_colour 0=Transparency */
 #define background_colour  "#000000"
+#define clockupdate 0        /* 1=Don't 0=Show second hand */
+#define OVERRIDE 1           /* 1= Don't 0=Set overriderediect, so the window manager won't control the window */
+#define WIDTH 200            /* Position and Size for when using override direct */
+#define HEIGHT 200
+#define POS_X 1250
+#define POS_Y 650
 #define hour_hand_colour   "#446688"
 #define minute_hand_colour "#6688aa"
 #define second_hand_colour "#88aabb"
 #define clock_face_colour  "#6688aa"
 #define tick_mark_colour   "#446688"
-#define hh_l 60             /* length of the hands */
+#define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
 #define tm_l 93             /* length of tick marks */
@@ -36,6 +42,7 @@
 #define mh_w 6
 #define sh_w 3
 #define tm_w 6
+#define face_w 4
 
 time_t t;
 struct tm *tmval;
@@ -50,6 +57,7 @@ static int angle1, angle2, angle3;
 
 static Pixmap root_pixmap;
 static Drawable win;
+static Drawable win_face;
 static Window realwin;
 static Window root;
 static Display *dis;
@@ -111,17 +119,19 @@ int drawface() {
     center_x = (square/2)+((width-square)/2);
     center_y = (square/2)+((height-square)/2);
 
-	XCopyArea(dis, root_pixmap, win, hour_h, win_x, win_y, width, height, 0, 0);
-	//XFillRectangle(dis, win, bg_gc, 0, 0, width, height);
-    XDrawArc(dis, win, face_cl, center_x-(square/2), center_y-(square/2), square, square, 0, 360*64);
+	if(TRANSPARENT == 0)
+        XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
+    else
+        XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
-	    angle1  = sine[i]*(square-2);
-        angle2  = -sine[(i+15)%60]*(square-2);
-        XDrawLine(dis,win,tick_m, (angle1*tm_l)/200000 + center_x,
+	    angle1  = sine[i]*(square-face_w+1);
+        angle2  = -sine[(i+15)%60]*(square-face_w+1);
+        XDrawLine(dis,win_face,tick_m, (angle1*tm_l)/200000 + center_x,
          (angle2*tm_l)/200000 + center_y, (angle1*100)/200000 + center_x,
           (angle2*100)/200000 + center_y);
     }
+    XDrawArc(dis, win_face, face_cl, center_x-(square/2), center_y-(square/2), square, square, 0, 360*64);
     return(0);
 }
 
@@ -131,7 +141,7 @@ int update_hands() {
     tmval = localtime(&t);
     int i,j;
 
-    XFillArc(dis, win, bg_gc, 0, 0, width, height, 0, 360*64);
+    XCopyArea(dis, win_face, win, hour_h, 0, 0, width, height, 0, 0);
     /* calculate the positions of the hands */
     angle1 = (tmval->tm_hour%12)*5 + tmval->tm_min/12;
     at.h_x =   sine[angle1] * square  *hh_l/200000 + center_x;
@@ -141,7 +151,7 @@ int update_hands() {
     at.m_x =   sine[angle2] * square  *mh_l/200000 + center_x;
     at.m_y = -(sine[(angle2+15)%60])* square *mh_l/200000 + center_y;
 
-	drawface();
+	//drawface();
      for(i=-1;i<2;i++)
 	for(j=-1;j<2;j++)
 	{
@@ -149,7 +159,7 @@ int update_hands() {
 	   XDrawLine(dis,win,min_h,center_x+i,center_y+j,at.m_x,at.m_y);
     }
 
-    if (clockupdate == 1) {
+    if (clockupdate < 1) {
        angle3 = tmval->tm_sec;
        at.s_x =   sine[angle3] * square  *sh_l/200000 + center_x;
        at.s_y = -(sine[(angle3+15)%60])* square *sh_l/200000 + center_y;
@@ -177,17 +187,18 @@ int main(){
 
 	screen_num = DefaultScreen(dis);
     root = RootWindow(dis,screen_num);
-    get_background();
+    if(TRANSPARENT == 0) get_background();
 	//background = None; //BlackPixel(dis, screen_num);
 	border = WhitePixel(dis, screen_num);
-	width = (XDisplayWidth(dis, screen_num)/4);
-	height = (XDisplayHeight(dis, screen_num)/4);
+	width = WIDTH;
+	height = HEIGHT;
 	XGCValues values;
 
 	win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
+	win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
 
-	realwin = XCreateSimpleWindow(dis, root, width,
-			height,height,height,0,border,ParentRelative);
+	realwin = XCreateSimpleWindow(dis, root, POS_X,POS_Y,
+	              width,height,0,border,None);
 
 	// This returns the FD of the X11 display
     x11_fd = ConnectionNumber(dis);
@@ -215,7 +226,7 @@ int main(){
 
 	/* create the face_cl GC to draw the clock face */
 	values.foreground = getcolor(clock_face_colour);
-	values.line_width = 4;
+	values.line_width = face_w;
 	values.line_style = LineSolid;
 	face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
@@ -236,14 +247,17 @@ int main(){
 	XMapWindow(dis, realwin);
     XStoreName(dis, realwin, "WallClock");
 
+    drawface();
+    update_hands();
 	while(1) {
         FD_ZERO(&in_fds);
         FD_SET(x11_fd, &in_fds);
 
         // Set our timer.  One second sounds good.
         tv.tv_usec = 0;
-        if(clockupdate == 1) tv.tv_sec = 1;
+        if(clockupdate < 1) tv.tv_sec = 1;
         else tv.tv_sec = 30;
+
         // Wait for X Event or a Timer
         if (!(select(x11_fd+1, &in_fds, 0, 0, &tv))) {
             update_hands();
@@ -257,25 +271,25 @@ int main(){
 		        square = (width >= height) ? height-4 : width-4;
    		    	XFreePixmap(dis, win);
    		        win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
+   		    	XFreePixmap(dis, win_face);
+   		        win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
    		    	drawface();
    		    	update_hands();
 		    	break;
 		    case ConfigureNotify:
                 win_x = ev.xconfigure.x;
                 win_y = ev.xconfigure.y;
-		    	if (width != ev.xconfigure.width || height != ev.xconfigure.height) {
-		    		width = ev.xconfigure.width;
-		    		height = ev.xconfigure.height;
-		    		drawface();
-		    		//update_hands();
-		    	}
+                width = ev.xconfigure.width;
+                height = ev.xconfigure.height;
+                drawface();
+                update_hands();
 		    	break;
 		    case MapNotify:
 		    	update_hands();
 		    	break;
             /* exit if a button is pressed inside the window */
 		    case ButtonPress:
-		        if(ev.xbutton.button != Button3) continue;
+		        if(ev.xbutton.button != Button3) break;
 		        XFreeGC(dis, hour_h);
 		        XFreeGC(dis, min_h);
 		        XFreeGC(dis, sec_h);
