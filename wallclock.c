@@ -32,6 +32,7 @@
 #define hour_hand_colour   "#446688"
 #define minute_hand_colour "#6688aa"
 #define second_hand_colour "#88aabb"
+#define clock_face_background "#cccccc"
 #define clock_face_colour  "#6688aa"
 #define tick_mark_colour   "#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
@@ -61,7 +62,7 @@ static Drawable win_face;
 static Window realwin;
 static Window root;
 static Display *dis;
-static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc;
+static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc, face_bg;
 
 /* save from computing sine(x), use pre-computed values
  * There are *100, to avoid using floats */
@@ -123,6 +124,10 @@ int drawface() {
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
     else
         XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
+
+    // Draw the face background
+    XFillArc(dis, win_face, face_bg, center_x-(square/2), center_y-(square/2), square, square, 0, 360*64);
+
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
 	    angle1  = sine[i]*(square-face_w+1);
@@ -229,6 +234,12 @@ int main(){
 	values.line_width = face_w;
 	values.line_style = LineSolid;
 	face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+
+	/* create the face_bg GC to draw the clock face */
+	values.foreground = getcolor(clock_face_background);
+	values.line_width = face_w;
+	values.line_style = LineSolid;
+	face_bg = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
 	/* create the tick_m GC to draw the tick marks */
 	values.foreground = getcolor(tick_mark_colour);

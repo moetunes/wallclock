@@ -1,9 +1,9 @@
 CFLAGS+= -Wall
-LDADD+= -lX11
+LDADD+= -lX11 
 LDFLAGS=
 EXEC=wallclock
 
-PREFIX?= /usr/local
+PREFIX?= /usr
 BINDIR?= $(PREFIX)/bin
 
 CC=gcc
@@ -11,11 +11,10 @@ CC=gcc
 all: $(EXEC)
 
 wallclock: wallclock.o
-	$(CC) $(LDFLAGS) -s -Os -o $@ $+ $(LDADD)
+	$(CC) $(LDFLAGS) -s -O2 -ffast-math -fno-unit-at-a-time -o $@ $+ $(LDADD)
 
 install: all
 	install -Dm 755 wallclock $(DESTDIR)$(BINDIR)/wallclock
 
 clean:
 	rm -fv wallclock *.o
-
