@@ -29,21 +29,21 @@
 #define HEIGHT 200
 #define POS_X 1250
 #define POS_Y 650
-#define hour_hand_colour   "#446688"
-#define minute_hand_colour "#6688aa"
-#define second_hand_colour "#88aabb"
+#define hour_hand_colour   "#004488" //"#446688"
+#define minute_hand_colour "#225599" //"#6688aa"
+#define second_hand_colour "#4466aa" //"#88aabb"
 #define clock_face_background "#cccccc"
-#define clock_face_colour  "#6688aa"
-#define tick_mark_colour   "#446688"
+#define clock_face_colour  "#002266" //"#6688aa"
+#define tick_mark_colour   "#004488" //"#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
 #define tm_l 93             /* length of tick marks */
 #define hh_w 8              /* Thickness of the hands */
 #define mh_w 6
-#define sh_w 3
+#define sh_w 2
 #define tm_w 6
-#define face_w 4
+#define face_w 2
 
 time_t t;
 struct tm *tmval;
