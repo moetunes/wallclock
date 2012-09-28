@@ -29,12 +29,12 @@
 #define HEIGHT 200
 #define POS_X 1250
 #define POS_Y 650
-#define hour_hand_colour   "#004488" //"#446688"
-#define minute_hand_colour "#225599" //"#6688aa"
-#define second_hand_colour "#4466aa" //"#88aabb"
-#define clock_face_background "#cccccc"
-#define clock_face_colour  "#002266" //"#6688aa"
-#define tick_mark_colour   "#004488" //"#446688"
+#define hour_hand_colour   "#303030" //"#446688"
+#define minute_hand_colour "#404040" //"#6688aa"
+#define second_hand_colour "#505050" //"#88aabb"
+#define clock_face_background "#200000"
+#define clock_face_colour  "#101010" //"#6688aa"
+#define tick_mark_colour   "#202020" //"#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
@@ -117,8 +117,8 @@ void get_background() {
 }
 
 int drawface() {
-    center_x = (square/2)+((width-square)/2);
-    center_y = (square/2)+((height-square)/2);
+    center_x = width/2; // (square/2)+((width-square)/2);
+    center_y = height/2; // (square/2)+((height-square)/2);
 
 	if(TRANSPARENT == 0)
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
@@ -130,8 +130,8 @@ int drawface() {
 
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
-	    angle1  = sine[i]*(square-face_w+1);
-        angle2  = -sine[(i+15)%60]*(square-face_w+1);
+	    angle1  = sine[i]*(square-face_w+2);
+        angle2  = -sine[(i+15)%60]*(square-face_w+2);
         XDrawLine(dis,win_face,tick_m, (angle1*tm_l)/200000 + center_x,
          (angle2*tm_l)/200000 + center_y, (angle1*100)/200000 + center_x,
           (angle2*100)/200000 + center_y);
