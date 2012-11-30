@@ -29,12 +29,12 @@
 #define HEIGHT 200
 #define POS_X 1250
 #define POS_Y 650
-#define hour_hand_colour   "#303030" //"#446688"
-#define minute_hand_colour "#404040" //"#6688aa"
-#define second_hand_colour "#505050" //"#88aabb"
-#define clock_face_background "#200000"
-#define clock_face_colour  "#101010" //"#6688aa"
-#define tick_mark_colour   "#202020" //"#446688"
+#define hour_hand_colour   "#004488" //"#446688"
+#define minute_hand_colour "#225599" //"#6688aa"
+#define second_hand_colour "#4466aa" //"#88aabb"
+#define clock_face_background "#cccccc"
+#define clock_face_colour  "#002266" //"#6688aa"
+#define tick_mark_colour   "#004488" //"#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
@@ -62,6 +62,7 @@ static Drawable win_face;
 static Window realwin;
 static Window root;
 static Display *dis;
+static Atom id = None;
 static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc, face_bg;
 
 /* save from computing sine(x), use pre-computed values
@@ -85,11 +86,12 @@ unsigned long getcolor(const char* color) {
 
 void get_background() {
     
-    static Atom id = None;
+    //static Atom id = None;
     const char* pixmap_id_names[] = {
         "_XROOTPMAP_ID", "ESETROOT_PMAP_ID", NULL
     };
     int j = 0;
+    root_pixmap = None;
     
     for (j=0; (pixmap_id_names[j] && (None == root_pixmap)); j++) {
 
@@ -120,9 +122,9 @@ int drawface() {
     center_x = width/2; // (square/2)+((width-square)/2);
     center_y = height/2; // (square/2)+((height-square)/2);
 
-	if(TRANSPARENT == 0)
+	if(TRANSPARENT == 0) {
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
-    else
+    } else
         XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
 
     // Draw the face background
@@ -192,7 +194,10 @@ int main(){
 
 	screen_num = DefaultScreen(dis);
     root = RootWindow(dis,screen_num);
-    if(TRANSPARENT == 0) get_background();
+    if(TRANSPARENT == 0) {
+        get_background();
+        //
+    }
 	//background = None; //BlackPixel(dis, screen_num);
 	border = WhitePixel(dis, screen_num);
 	width = WIDTH;
@@ -253,10 +258,11 @@ int main(){
 	values.line_style = LineSolid;
 	bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
+    XStoreName(dis, realwin, "WallClock");
 	XSelectInput(dis, realwin, ButtonPressMask|StructureNotifyMask|ExposureMask );
+    //XSelectInput(dis, root, PropertyChangeMask);
 
 	XMapWindow(dis, realwin);
-    XStoreName(dis, realwin, "WallClock");
 
     drawface();
     update_hands();
@@ -272,10 +278,11 @@ int main(){
         // Wait for X Event or a Timer
         if (!(select(x11_fd+1, &in_fds, 0, 0, &tv))) {
             update_hands();
+            //printf("updating hands \n");
         }
 
         // Handle XEvents and flush the input 
-        while(XPending(dis)) {
+        while(XPending(dis) != 0) {
             XNextEvent(dis, &ev);
             switch(ev.type){
 		    case Expose:
@@ -299,6 +306,12 @@ int main(){
 		    	update_hands();
 		    	break;
             /* exit if a button is pressed inside the window */
+		    /* case PropertyNotify:
+		        if(ev.xproperty.window != root || ev.xproperty.atom != id) continue;
+	            get_background();
+	            drawface();
+	            puts("WallClock :: background updated");
+		        break; */
 		    case ButtonPress:
 		        if(ev.xbutton.button != Button3) break;
 		        XFreeGC(dis, hour_h);
@@ -307,6 +320,9 @@ int main(){
 		        XFreeGC(dis, face_cl);
 		        XFreeGC(dis, tick_m);
 		        XFreeGC(dis, bg_gc);
+		        XFreePixmap(dis, win);
+		    	XFreePixmap(dis, win_face);
+		    	//XFreePixmap(dis, root_pixmap);
 		    	XCloseDisplay(dis);
 		    	return(0);
 		    }
