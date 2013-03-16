@@ -14,6 +14,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/Xproto.h>
 #include <X11/Xresource.h>
 #include <X11/Xatom.h>
 #include <stdio.h>
@@ -27,14 +28,14 @@
 #define OVERRIDE 1           /* 1= Don't 0=Set overriderediect, so the window manager won't control the window */
 #define WIDTH 200            /* Position and Size for when using override direct */
 #define HEIGHT 200
-#define POS_X 1250
-#define POS_Y 650
-#define hour_hand_colour   "#004488" //"#446688"
-#define minute_hand_colour "#225599" //"#6688aa"
-#define second_hand_colour "#4466aa" //"#88aabb"
-#define clock_face_background "#cccccc"
-#define clock_face_colour  "#002266" //"#6688aa"
-#define tick_mark_colour   "#004488" //"#446688"
+#define POS_X 1050
+#define POS_Y 550
+#define hour_hand_colour   "#777777" //"#004488" //"#446688"
+#define minute_hand_colour "#888888" //"#225599" //"#6688aa"
+#define second_hand_colour "#999999" //"#4466aa" //"#88aabb"
+#define clock_face_background "#002244" //"#cccccc"
+#define clock_face_colour  "#999999" //"#002266" //"#6688aa"
+#define tick_mark_colour   "#999999" //"#004488" //"#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
@@ -54,7 +55,7 @@ struct ti {
 
 static int square, center_x, center_y;
 static int i, width, height, win_x, win_y;
-static int angle1, angle2, angle3;
+static int angle1, angle2, angle3, trans;
 
 static Pixmap root_pixmap;
 static Drawable win;
@@ -62,9 +63,10 @@ static Drawable win_face;
 static Window realwin;
 static Window root;
 static Display *dis;
-static Atom id = None;
+static Atom id = None, wm_del_win;
 static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc, face_bg;
-
+static int xerror(Display *dis, XErrorEvent *ee);
+static int (*xerrorxlib)(Display *, XErrorEvent *);
 /* save from computing sine(x), use pre-computed values
  * There are *100, to avoid using floats */
 short sine[]={0,105,208,309,407,500,588,669,743,809,866,914,951,
@@ -78,19 +80,17 @@ unsigned long getcolor(const char* color) {
     Colormap map = DefaultColormap(dis,DefaultScreen(dis));
 
     if(!XAllocNamedColor(dis,map,color,&c,&c)) {
-        fprintf(stderr, "\033[0;31mError parsing color!\n");
+        fputs(":: Wallclock : \033[0;31mError parsing color!\n", stderr);
         exit(1);
     }
     return c.pixel;
 }
 
 void get_background() {
-    
-    //static Atom id = None;
     const char* pixmap_id_names[] = {
         "_XROOTPMAP_ID", "ESETROOT_PMAP_ID", NULL
     };
-    int j = 0;
+    unsigned int j = 0;
     root_pixmap = None;
     
     for (j=0; (pixmap_id_names[j] && (None == root_pixmap)); j++) {
@@ -113,16 +113,18 @@ void get_background() {
 
             if (Success == rc && properties) {
                 root_pixmap = *((Pixmap*)properties);
+                if(properties != NULL) XFree(properties);
             }
         }
     }
+    if(root_pixmap == None) trans = 1;
 }
 
 int drawface() {
     center_x = width/2; // (square/2)+((width-square)/2);
     center_y = height/2; // (square/2)+((height-square)/2);
 
-	if(TRANSPARENT == 0) {
+	if(trans == 0) {
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
     } else
         XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
@@ -158,7 +160,6 @@ int update_hands() {
     at.m_x =   sine[angle2] * square  *mh_l/200000 + center_x;
     at.m_y = -(sine[(angle2+15)%60])* square *mh_l/200000 + center_y;
 
-	//drawface();
      for(i=-1;i<2;i++)
 	for(j=-1;j<2;j++)
 	{
@@ -177,7 +178,39 @@ int update_hands() {
     XCopyArea(dis, win, realwin, hour_h, 0, 0, width, height, 0, 0);
 	XFlush(dis);
 	return(0);
+}
 
+int xerror(Display *dis, XErrorEvent *ee) {
+    if(ee->error_code == BadWindow
+    || (ee->request_code == X_SetInputFocus && ee->error_code == BadMatch)
+    || (ee->request_code == X_PolyText8 && ee->error_code == BadDrawable)
+    || (ee->request_code == X_PolyFillRectangle && ee->error_code == BadDrawable)
+    || (ee->request_code == X_PolySegment && ee->error_code == BadDrawable)
+    || (ee->request_code == X_ConfigureWindow && ee->error_code == BadMatch)
+    || (ee->request_code == X_GrabKey && ee->error_code == BadAccess)
+    || (ee->request_code == X_CopyArea && ee->error_code == BadDrawable))
+        fputs(":: Wallclock : Somethings Up !\n", stderr);
+    if(ee->error_code == BadDrawable) {
+        fputs(":: Wallclock : Did the background change?\n", stderr);
+        get_background();
+        drawface();
+        return 0;
+    } else fputs(":: Wallclock : \033[0;31mBad Window Error!\n", stderr);
+    return xerrorxlib(dis, ee); /* may call exit */
+}
+
+
+void quit() {
+    XFreeGC(dis, hour_h);
+	XFreeGC(dis, min_h);
+	XFreeGC(dis, sec_h);
+	XFreeGC(dis, face_cl);
+	XFreeGC(dis, tick_m);
+	XFreeGC(dis, bg_gc);
+	XFreePixmap(dis, win);
+	XFreePixmap(dis, win_face);
+	//XFreePixmap(dis, root_pixmap);
+	XCloseDisplay(dis);
 }
 
 int main(){
@@ -190,14 +223,13 @@ int main(){
 
 	/* First connect to the display server, as specified in the DISPLAY environment variable. */
 	dis = XOpenDisplay(NULL);
-	if (!dis) {fprintf(stderr, "unable to connect to display");return 1;}
+	if (!dis) {fputs(":: Wallclock : unable to connect to display", stderr);return 1;}
 
 	screen_num = DefaultScreen(dis);
     root = RootWindow(dis,screen_num);
-    if(TRANSPARENT == 0) {
-        get_background();
-        //
-    }
+    XSetErrorHandler(xerror);
+    trans = TRANSPARENT;
+    if(trans == 0) get_background();
 	//background = None; //BlackPixel(dis, screen_num);
 	border = WhitePixel(dis, screen_num);
 	width = WIDTH;
@@ -258,8 +290,11 @@ int main(){
 	values.line_style = LineSolid;
 	bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
+    /* want to accept the delete window protocol */
+    wm_del_win = XInternAtom(dis,"WM_DELETE_WINDOW",False);
+    XSetWMProtocols(dis,realwin,&wm_del_win,1);
     XStoreName(dis, realwin, "WallClock");
-	XSelectInput(dis, realwin, ButtonPressMask|StructureNotifyMask|ExposureMask );
+	XSelectInput(dis, realwin, KeyPressMask|ButtonPressMask|StructureNotifyMask|ExposureMask );
     //XSelectInput(dis, root, PropertyChangeMask);
 
 	XMapWindow(dis, realwin);
@@ -278,11 +313,10 @@ int main(){
         // Wait for X Event or a Timer
         if (!(select(x11_fd+1, &in_fds, 0, 0, &tv))) {
             update_hands();
-            //printf("updating hands \n");
         }
 
         // Handle XEvents and flush the input 
-        while(XPending(dis) != 0) {
+        //while(XPending(dis) != 0) {
             XNextEvent(dis, &ev);
             switch(ev.type){
 		    case Expose:
@@ -305,28 +339,26 @@ int main(){
 		    case MapNotify:
 		    	update_hands();
 		    	break;
-            /* exit if a button is pressed inside the window */
-		    /* case PropertyNotify:
+		    /*case PropertyNotify:
 		        if(ev.xproperty.window != root || ev.xproperty.atom != id) continue;
 	            get_background();
 	            drawface();
-	            puts("WallClock :: background updated");
+	            fputs(":: WallClock :: background updated\n", stderr);
 		        break; */
+		    case KeyPress:
+		        if(ev.xkey.keycode != 24) break;
+		        quit();
+	        	return(0);
 		    case ButtonPress:
 		        if(ev.xbutton.button != Button3) break;
-		        XFreeGC(dis, hour_h);
-		        XFreeGC(dis, min_h);
-		        XFreeGC(dis, sec_h);
-		        XFreeGC(dis, face_cl);
-		        XFreeGC(dis, tick_m);
-		        XFreeGC(dis, bg_gc);
-		        XFreePixmap(dis, win);
-		    	XFreePixmap(dis, win_face);
-		    	//XFreePixmap(dis, root_pixmap);
-		    	XCloseDisplay(dis);
-		    	return(0);
+		        quit();
+                return(0);
+            case ClientMessage:
+                quit();
+                return(0);
+                break;
 		    }
-		}
+		//}
 	}
 	return(0);
 }
