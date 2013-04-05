@@ -354,6 +354,7 @@ int main(){
 		        quit();
                 return(0);
             case ClientMessage:
+                if(ev.xclient.window != realwin) break;
                 quit();
                 return(0);
                 break;
