@@ -23,19 +23,19 @@
 #include <time.h>
 
 #define TRANSPARENT 0        /* 1=Use background_colour 0=Transparency */
-#define background_colour  "#000000"
+#define background_colour  "#00FF00"
 #define clockupdate 0        /* 1=Don't 0=Show second hand */
 #define OVERRIDE 1           /* 1= Don't 0=Set overriderediect, so the window manager won't control the window */
 #define WIDTH 200            /* Position and Size for when using override direct */
 #define HEIGHT 200
 #define POS_X 1050
 #define POS_Y 550
-#define hour_hand_colour   "#777777" //"#004488" //"#446688"
-#define minute_hand_colour "#888888" //"#225599" //"#6688aa"
-#define second_hand_colour "#999999" //"#4466aa" //"#88aabb"
-#define clock_face_background "#002244" //"#cccccc"
-#define clock_face_colour  "#999999" //"#002266" //"#6688aa"
-#define tick_mark_colour   "#999999" //"#004488" //"#446688"
+#define hour_hand_colour   "#232323" //"#777777" //"#004488" //"#446688"
+#define minute_hand_colour "#343434" //"#888888" //"#225599" //"#6688aa"
+#define second_hand_colour "#454545" //"#999999" //"#4466aa" //"#88aabb"
+#define clock_face_background "#dedede" //"#002244" //"#cccccc"
+#define clock_face_colour  "#454545" //"#999999" //"#002266" //"#6688aa"
+#define tick_mark_colour   "#454545" //"#999999" //"#004488" //"#446688"
 #define hh_l 60             /* length of the hands in % of radius*/
 #define mh_l 75
 #define sh_l 91
@@ -294,6 +294,12 @@ int main(){
     wm_del_win = XInternAtom(dis,"WM_DELETE_WINDOW",False);
     XSetWMProtocols(dis,realwin,&wm_del_win,1);
     XStoreName(dis, realwin, "WallClock");
+	XClassHint* classHint;
+    classHint = XAllocClassHint();
+    classHint->res_name = "WallClock";
+    classHint->res_class = "WallClock";
+    XSetClassHint(dis, realwin, classHint);
+    XFree(classHint);
 	XSelectInput(dis, realwin, KeyPressMask|ButtonPressMask|StructureNotifyMask|ExposureMask );
     //XSelectInput(dis, root, PropertyChangeMask);
 
