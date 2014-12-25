@@ -68,12 +68,12 @@ static GC hour_h, min_h, sec_h, face_cl, tick_m, bg_gc, face_bg;
 static int xerror(Display *dis, XErrorEvent *ee);
 static int (*xerrorxlib)(Display *, XErrorEvent *);
 /* save from computing sine(x), use pre-computed values
- * There are *100, to avoid using floats */
+ * They are *100, to avoid using floats */
 short sine[]={0,105,208,309,407,500,588,669,743,809,866,914,951,
     978,995,999,995,978,951,914,866,809,743,669,588,500,
-	407,309,208,105,0,-105,-208,-309,-407,-500,-588,-669,
-	-743,-809,-866,-914,-951,-978,-995,-999,-994,-978,-951,
-	-914,-866,-809,-743,-669,-588,-500,-407,-309,-208,-105 };
+    407,309,208,105,0,-105,-208,-309,-407,-500,-588,-669,
+    -743,-809,-866,-914,-951,-978,-995,-999,-994,-978,-951,
+    -914,-866,-809,-743,-669,-588,-500,-407,-309,-208,-105 };
 
 unsigned long getcolor(const char* color) {
     XColor c;
@@ -92,7 +92,7 @@ void get_background() {
     };
     unsigned int j = 0;
     root_pixmap = None;
-    
+
     for (j=0; (pixmap_id_names[j] && (None == root_pixmap)); j++) {
 
         if (None == id) {
@@ -117,14 +117,17 @@ void get_background() {
             }
         }
     }
-    if(root_pixmap == None) trans = 1;
+    if(root_pixmap == None) {
+        trans = 1;
+        fputs(":: WALLCLOCK :: Failed Root Pixmap\n", stderr);
+    }
 }
 
 int drawface() {
     center_x = width/2; // (square/2)+((width-square)/2);
     center_y = height/2; // (square/2)+((height-square)/2);
 
-	if(trans == 0) {
+    if(trans == 0) {
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
     } else
         XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
@@ -134,7 +137,7 @@ int drawface() {
 
     // Draw the tick marks
     for(i=0;i<60;i+=5) {
-	    angle1  = sine[i]*(square-face_w+2);
+        angle1  = sine[i]*(square-face_w+2);
         angle2  = -sine[(i+15)%60]*(square-face_w+2);
         XDrawLine(dis,win_face,tick_m, (angle1*tm_l)/200000 + center_x,
          (angle2*tm_l)/200000 + center_y, (angle1*100)/200000 + center_x,
@@ -161,10 +164,10 @@ int update_hands() {
     at.m_y = -(sine[(angle2+15)%60])* square *mh_l/200000 + center_y;
 
      for(i=-1;i<2;i++)
-	for(j=-1;j<2;j++)
-	{
-	   XDrawLine(dis,win,hour_h,center_x+i,center_y+j,at.h_x,at.h_y);
-	   XDrawLine(dis,win,min_h,center_x+i,center_y+j,at.m_x,at.m_y);
+    for(j=-1;j<2;j++)
+    {
+       XDrawLine(dis,win,hour_h,center_x+i,center_y+j,at.h_x,at.h_y);
+       XDrawLine(dis,win,min_h,center_x+i,center_y+j,at.m_x,at.m_y);
     }
 
     if (clockupdate < 1) {
@@ -176,8 +179,8 @@ int update_hands() {
        at.s_x = at.s_y = 0;
     }
     XCopyArea(dis, win, realwin, hour_h, 0, 0, width, height, 0, 0);
-	XFlush(dis);
-	return(0);
+    XFlush(dis);
+    return(0);
 }
 
 int xerror(Display *dis, XErrorEvent *ee) {
@@ -192,122 +195,118 @@ int xerror(Display *dis, XErrorEvent *ee) {
         fputs(":: Wallclock : Somethings Up !\n", stderr);
     if(ee->error_code == BadDrawable) {
         fputs(":: Wallclock : Did the background change?\n", stderr);
-        get_background();
-        drawface();
         return 0;
     } else fputs(":: Wallclock : \033[0;31mBad Window Error!\n", stderr);
     return xerrorxlib(dis, ee); /* may call exit */
 }
 
-
 void quit() {
     XFreeGC(dis, hour_h);
-	XFreeGC(dis, min_h);
-	XFreeGC(dis, sec_h);
-	XFreeGC(dis, face_cl);
-	XFreeGC(dis, tick_m);
-	XFreeGC(dis, bg_gc);
-	XFreePixmap(dis, win);
-	XFreePixmap(dis, win_face);
-	//XFreePixmap(dis, root_pixmap);
-	XCloseDisplay(dis);
+    XFreeGC(dis, min_h);
+    XFreeGC(dis, sec_h);
+    XFreeGC(dis, face_cl);
+    XFreeGC(dis, tick_m);
+    XFreeGC(dis, bg_gc);
+    XFreePixmap(dis, win);
+    XFreePixmap(dis, win_face);
+    //XFreePixmap(dis, root_pixmap);
+    XCloseDisplay(dis);
 }
 
 int main(){
-	int screen_num;
-	unsigned long border;
-	XEvent ev;
-	int x11_fd;
+    int screen_num;
+    unsigned long border;
+    XEvent ev;
+    int x11_fd;
     fd_set in_fds;
     struct timeval tv;
 
-	/* First connect to the display server, as specified in the DISPLAY environment variable. */
-	dis = XOpenDisplay(NULL);
-	if (!dis) {fputs(":: Wallclock : unable to connect to display", stderr);return 1;}
+    dis = XOpenDisplay(NULL);
+    if (!dis) {fputs(":: Wallclock : unable to connect to display", stderr);return 1;}
 
-	screen_num = DefaultScreen(dis);
+    screen_num = DefaultScreen(dis);
     root = RootWindow(dis,screen_num);
     XSetErrorHandler(xerror);
     trans = TRANSPARENT;
     if(trans == 0) get_background();
-	//background = None; //BlackPixel(dis, screen_num);
-	border = WhitePixel(dis, screen_num);
-	width = WIDTH;
-	height = HEIGHT;
-	XGCValues values;
+    //background = None; //BlackPixel(dis, screen_num);
+    border = WhitePixel(dis, screen_num);
+    width = WIDTH;
+    height = HEIGHT;
+    XGCValues values;
 
-	win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
-	win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
+    win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
+    win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
 
-	realwin = XCreateSimpleWindow(dis, root, POS_X,POS_Y,
-	              width,height,0,border,None);
+    realwin = XCreateSimpleWindow(dis, root, POS_X,POS_Y,
+                  width,height,0,border,None);
 
-	// This returns the FD of the X11 display
+    // This returns the FD of the X11 display
     x11_fd = ConnectionNumber(dis);
-	
-	/* create the hour_h GC to draw the hour hand */
-	values.foreground = getcolor(hour_hand_colour);
-	values.line_width = hh_w;
-	values.line_style = LineSolid;
-	values.cap_style = CapRound;
-	hour_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
-	/* create the min_h GC to draw the minute hand */
-	values.foreground = getcolor(minute_hand_colour);
-	values.line_width = mh_w;
-	values.line_style = LineSolid;
-	values.cap_style = CapRound;
-	min_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
+    /* create the hour_h GC to draw the hour hand */
+    values.foreground = getcolor(hour_hand_colour);
+    values.line_width = hh_w;
+    values.line_style = LineSolid;
+    values.cap_style = CapRound;
+    hour_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
-	/* create the sec_h GC to draw the second hand */
-	values.foreground = getcolor(second_hand_colour);
-	values.line_width = sh_w;
-	values.line_style = LineSolid;
-	values.cap_style = CapRound;
-	sec_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
+    /* create the min_h GC to draw the minute hand */
+    values.foreground = getcolor(minute_hand_colour);
+    values.line_width = mh_w;
+    values.line_style = LineSolid;
+    values.cap_style = CapRound;
+    min_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
-	/* create the face_cl GC to draw the clock face */
-	values.foreground = getcolor(clock_face_colour);
-	values.line_width = face_w;
-	values.line_style = LineSolid;
-	face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+    /* create the sec_h GC to draw the second hand */
+    values.foreground = getcolor(second_hand_colour);
+    values.line_width = sh_w;
+    values.line_style = LineSolid;
+    values.cap_style = CapRound;
+    sec_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
 
-	/* create the face_bg GC to draw the clock face */
-	values.foreground = getcolor(clock_face_background);
-	values.line_width = face_w;
-	values.line_style = LineSolid;
-	face_bg = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+    /* create the face_cl GC to draw the clock face */
+    values.foreground = getcolor(clock_face_colour);
+    values.line_width = face_w;
+    values.line_style = LineSolid;
+    face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
-	/* create the tick_m GC to draw the tick marks */
-	values.foreground = getcolor(tick_mark_colour);
-	values.line_width = tm_w;
-	values.line_style = LineSolid;
-	tick_m = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+    /* create the face_bg GC to draw the clock face */
+    values.foreground = getcolor(clock_face_background);
+    values.line_width = face_w;
+    values.line_style = LineSolid;
+    face_bg = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
-	/* create the bg_gc GC to draw the background */
-	values.foreground = getcolor(background_colour);
-	values.line_width = 8;
-	values.line_style = LineSolid;
-	bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+    /* create the tick_m GC to draw the tick marks */
+    values.foreground = getcolor(tick_mark_colour);
+    values.line_width = tm_w;
+    values.line_style = LineSolid;
+    tick_m = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+
+    /* create the bg_gc GC to draw the background */
+    values.foreground = getcolor(background_colour);
+    values.line_width = 8;
+    values.line_style = LineSolid;
+    bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
     /* want to accept the delete window protocol */
     wm_del_win = XInternAtom(dis,"WM_DELETE_WINDOW",False);
     XSetWMProtocols(dis,realwin,&wm_del_win,1);
     XStoreName(dis, realwin, "WallClock");
-	XClassHint* classHint;
+    XClassHint* classHint;
     classHint = XAllocClassHint();
     classHint->res_name = "WallClock";
     classHint->res_class = "WallClock";
     XSetClassHint(dis, realwin, classHint);
     XFree(classHint);
-	XSelectInput(dis, realwin, KeyPressMask|ButtonPressMask|StructureNotifyMask|ExposureMask );
-    //XSelectInput(dis, root, PropertyChangeMask);
+    XSelectInput(dis, realwin, KeyPressMask|ButtonPressMask|StructureNotifyMask|ExposureMask );
+    XSelectInput(dis, root, PropertyChangeMask);
 
-	XMapWindow(dis, realwin);
+    XMapWindow(dis, realwin);
 
     drawface();
     update_hands();
-	while(1) {
+    while(1) {
         FD_ZERO(&in_fds);
         FD_SET(x11_fd, &in_fds);
 
@@ -322,50 +321,54 @@ int main(){
         }
 
         // Handle XEvents and flush the input 
-        //while(XPending(dis) != 0) {
+        while(XPending(dis) != 0) {
             XNextEvent(dis, &ev);
             switch(ev.type){
-		    case Expose:
-		        square = (width >= height) ? height-4 : width-4;
-   		    	XFreePixmap(dis, win);
-   		        win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
-   		    	XFreePixmap(dis, win_face);
-   		        win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));	
-   		    	drawface();
-   		    	update_hands();
-		    	break;
-		    case ConfigureNotify:
+            case Expose:
+                square = (width >= height) ? height-4 : width-4;
+                   XFreePixmap(dis, win);
+                   win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
+                   XFreePixmap(dis, win_face);
+                   win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
+                   drawface();
+                   update_hands();
+                break;
+            case ConfigureNotify:
                 win_x = ev.xconfigure.x;
                 win_y = ev.xconfigure.y;
                 width = ev.xconfigure.width;
                 height = ev.xconfigure.height;
                 drawface();
                 update_hands();
-		    	break;
-		    case MapNotify:
-		    	update_hands();
-		    	break;
-		    /*case PropertyNotify:
-		        if(ev.xproperty.window != root || ev.xproperty.atom != id) continue;
-	            get_background();
-	            drawface();
-	            fputs(":: WallClock :: background updated\n", stderr);
-		        break; */
-		    case KeyPress:
-		        if(ev.xkey.keycode != 24) break;
-		        quit();
-	        	return(0);
-		    case ButtonPress:
-		        if(ev.xbutton.button != Button3) break;
-		        quit();
+                break;
+            case MapNotify:
+                update_hands();
+                break;
+            case PropertyNotify:
+                if(trans != 0 || ev.xproperty.atom != id) {
+                    update_hands();
+                    break;
+                }
+                get_background();
+                fputs(":: WallClock :: background updated\n", stderr);
+                drawface();
+                break;
+            case KeyPress:
+                if(ev.xkey.keycode != 24) break;
+                quit();
+                return(0);
+            case ButtonPress:
+                if(ev.xbutton.button != Button3) break;
+                quit();
                 return(0);
             case ClientMessage:
                 if(ev.xclient.window != realwin) break;
                 quit();
                 return(0);
                 break;
-		    }
-		//}
-	}
-	return(0);
+            default: break;
+            }
+        }
+    }
+    return(0);
 }
