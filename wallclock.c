@@ -17,34 +17,11 @@
 #include <X11/Xproto.h>
 #include <X11/Xresource.h>
 #include <X11/Xatom.h>
+#include <X11/Xlocale.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-
-#define TRANSPARENT 0        /* 1=Use background_colour 0=Transparency */
-#define background_colour  "#00FF00"
-#define clockupdate 0        /* 1=Don't 0=Show second hand */
-#define OVERRIDE 1           /* 1= Don't 0=Set overriderediect, so the window manager won't control the window */
-#define WIDTH 200            /* Position and Size for when using override direct */
-#define HEIGHT 200
-#define POS_X 1050
-#define POS_Y 550
-#define hour_hand_colour   "#232323" //"#777777" //"#004488" //"#446688"
-#define minute_hand_colour "#343434" //"#888888" //"#225599" //"#6688aa"
-#define second_hand_colour "#454545" //"#999999" //"#4466aa" //"#88aabb"
-#define clock_face_background "#dedede" //"#002244" //"#cccccc"
-#define clock_face_colour  "#454545" //"#999999" //"#002266" //"#6688aa"
-#define tick_mark_colour   "#454545" //"#999999" //"#004488" //"#446688"
-#define hh_l 60             /* length of the hands in % of radius*/
-#define mh_l 75
-#define sh_l 91
-#define tm_l 93             /* length of tick marks */
-#define hh_w 8              /* Thickness of the hands */
-#define mh_w 6
-#define sh_w 2
-#define tm_w 6
-#define face_w 2
 
 time_t t;
 struct tm *tmval;
@@ -53,9 +30,22 @@ struct ti {
    int s_x,s_y,m_x,m_y,h_x,h_y;
 } at;
 
+static void readrc();
+static void reload();
+static int read_int(char *buff, int start);
+static void read_char (char *buff, int start, char *colour);
+static GC hands_gc(char *color, int gcwidth);
+static GC fill_gc(char *color, int gcwidth);
+
 static int square, center_x, center_y;
 static int i, width, height, win_x, win_y;
 static int angle1, angle2, angle3, trans;
+static char RCFILE[100];
+static unsigned int clockupdate, have_rootp;
+static int tm_l, hh_w, hh_l, mh_w, mh_l, sh_w, sh_l, face_w, tm_w;
+static char background_colour[10], hour_hand_colour[10], minute_hand_colour[10];
+static char second_hand_colour[10], clock_face_background[10], clock_face_border[10];
+static char tick_mark_colour[10];
 
 static Pixmap root_pixmap;
 static Drawable win;
@@ -118,16 +108,16 @@ void get_background() {
         }
     }
     if(root_pixmap == None) {
-        trans = 1;
+        trans = have_rootp = 0;
         fputs(":: WALLCLOCK :: Failed Root Pixmap\n", stderr);
-    }
+    } else have_rootp = 1;
 }
 
 int drawface() {
     center_x = width/2; // (square/2)+((width-square)/2);
     center_y = height/2; // (square/2)+((height-square)/2);
 
-    if(trans == 0) {
+    if(trans == 1) {
         XCopyArea(dis, root_pixmap, win_face, hour_h, win_x, win_y, width, height, 0, 0);
     } else
         XFillRectangle(dis, win_face, bg_gc, 0, 0, width, height);
@@ -170,7 +160,7 @@ int update_hands() {
        XDrawLine(dis,win,min_h,center_x+i,center_y+j,at.m_x,at.m_y);
     }
 
-    if (clockupdate < 1) {
+    if (clockupdate == 1) {
        angle3 = tmval->tm_sec;
        at.s_x =   sine[angle3] * square  *sh_l/200000 + center_x;
        at.s_y = -(sine[(angle3+15)%60])* square *sh_l/200000 + center_y;
@@ -213,7 +203,135 @@ void quit() {
     XCloseDisplay(dis);
 }
 
+GC hands_gc(char *color, int gcwidth) {
+    XGCValues values;
+    GC gc;
+
+    values.foreground = getcolor(color);
+    values.line_width = gcwidth;
+    values.line_style = LineSolid;
+    values.cap_style = CapRound;
+    gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
+    if(gc < 0) fputs("WallClock :: GC FAIL\n", stderr);
+    return gc;
+}
+
+GC fill_gc(char *color, int gcwidth) {
+    XGCValues values;
+    GC gc;
+
+    values.foreground = getcolor(color);
+    values.line_width = gcwidth;
+    values.line_style = LineSolid;
+    gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
+    if(gc < 0) fputs("WallClock :: GC FAIL\n", stderr);
+    return gc;
+}
+
+int read_int (char *buff, int start) {
+    unsigned int i, j = 0;
+    char ret[100];
+
+    for(i=start; i<100;++i) {
+        if(buff[i] == ' ') continue;
+        if(buff[i] == '\n' || buff[i] == 0 || buff[i] == '\r') break;
+        ret[j] = buff[i]; ++j;
+    }
+    ret[j] = '\0';
+    return strtol(ret, NULL, 10);
+}
+
+void read_char(char *buff, int start, char *colour) {
+    unsigned int i, j = 0;
+
+    for(i=start;i<100;++i) {
+        if(buff[i] == ' ' || buff[i] == '"') continue;
+        if(buff[i] == '\n' || buff[i] == 0) break;
+        colour[j] = buff[i]; ++j;
+    }
+    colour[j] = '\0';
+}
+
+void readrc() {
+    FILE *rcfile;
+    char buffer[100];
+
+    rcfile = fopen( RCFILE, "r" );
+    if (rcfile == NULL) {
+        fputs("WallClock :: Failed to open ~/.config/wallclock/rc.conf\n", stderr);
+        return;
+    } else {
+        while(fgets(buffer,sizeof buffer,rcfile) != NULL) {
+            /* Check for comments */
+            if(buffer[0] == '#' || buffer[0] == ' ' || buffer[0] == '\n') continue;
+            /* Now look for info */
+            if(strstr(buffer, "Transparent" ) != NULL) {
+                trans = read_int(buffer, 12);
+            } else if(strstr(buffer, "ShowSecondHand" ) != NULL) {
+                clockupdate = read_int(buffer, 15);
+            } else if(strstr(buffer, "WindowWidth" ) != NULL) {
+                width = (width > 0) ? width : read_int(buffer, 12);
+            } else if(strstr(buffer, "WindowHeight" ) != NULL) {
+                height = (height > 0) ? height : read_int(buffer, 13);
+            } else if(strstr(buffer, "WindowX" ) != NULL) {
+                win_x = (win_x > 0) ? win_x : read_int(buffer, 8);
+            } else if(strstr(buffer, "WindowY" ) != NULL) {
+                win_y = (win_y > 0) ? win_y : read_int(buffer, 8);
+            } else if(strstr(buffer, "ClockBorderWidth" ) != NULL) {
+                face_w = read_int(buffer, 17);
+            } else if(strstr(buffer, "TickMarkWidth" ) != NULL) {
+                tm_w = read_int(buffer, 14);
+            } else if(strstr(buffer, "TickMarkLength" ) != NULL) {
+                tm_l = 100 - read_int(buffer, 15);
+            } else if(strstr(buffer, "HourHandWidth" ) != NULL) {
+                hh_w = read_int(buffer, 14);
+            } else if(strstr(buffer, "HourHandLength" ) != NULL) {
+                hh_l = read_int(buffer, 15);
+            } else if(strstr(buffer, "MinuteHandWidth" ) != NULL) {
+                mh_w = read_int(buffer, 16);
+            } else if(strstr(buffer, "MinuteHandLength" ) != NULL) {
+                mh_l = read_int(buffer, 17);
+            } else if(strstr(buffer, "SecondHandWidth" ) != NULL) {
+                sh_w = read_int(buffer, 16);
+            } else if(strstr(buffer, "SecondHandLength" ) != NULL) {
+                sh_l = read_int(buffer, 17);
+            } else if(strstr(buffer, "WindowBackgroundColour" ) != NULL) {
+                read_char(buffer, 23, background_colour);
+            } else if(strstr(buffer, "ClockBorderColour" ) != NULL) {
+                 read_char(buffer, 18, clock_face_border);
+            } else if(strstr(buffer, "TickMarkColour" ) != NULL) {
+                 read_char(buffer, 15, tick_mark_colour);
+            } else if(strstr(buffer, "ClockFaceBackgroundColour" ) != NULL) {
+                 read_char(buffer, 26, clock_face_background);
+            } else if(strstr(buffer, "HourHandColour" ) != NULL) {
+                 read_char(buffer, 15, hour_hand_colour);
+            } else if(strstr(buffer, "MinuteHandColour" ) != NULL) {
+                 read_char(buffer, 17, minute_hand_colour);
+            } else if(strstr(buffer, "SecondHandColour" ) != NULL) {
+                 read_char(buffer, 17, second_hand_colour);
+            }
+        }
+    }
+    fclose(rcfile);
+}
+
+void reload() {
+    readrc();
+    hour_h = hands_gc(hour_hand_colour, hh_w);
+    min_h = hands_gc(minute_hand_colour, mh_w);
+    sec_h = hands_gc(second_hand_colour, sh_w);
+    tick_m = hands_gc(tick_mark_colour, tm_w);
+    face_cl = fill_gc(clock_face_border, face_w);
+    face_bg = fill_gc(clock_face_background, face_w);
+    bg_gc = fill_gc(background_colour, 8);
+    if(trans == 1 && have_rootp == 0) get_background();
+    drawface();
+}
+
 int main(){
+    dis = XOpenDisplay(NULL);
+    if (!dis) {fputs(":: Wallclock : unable to connect to display", stderr);return 1;}
+
     int screen_num;
     unsigned long border;
     XEvent ev;
@@ -221,73 +339,45 @@ int main(){
     fd_set in_fds;
     struct timeval tv;
 
-    dis = XOpenDisplay(NULL);
-    if (!dis) {fputs(":: Wallclock : unable to connect to display", stderr);return 1;}
+    /* set defaults */
+    trans = 0;
+    clockupdate = 1;
+    width = height = win_x = win_y = 0;
+    face_w = 2;
+    tm_w = 6;
+    tm_l = 7;
+    hh_w = 8;
+    hh_l = 60;
+    mh_w = 6;
+    mh_l = 75;
+    sh_w = 2;
+    sh_l = 91;
+    have_rootp = 0;
+
+    char *loc;
+    loc = setlocale(LC_ALL, "");
+    if (!loc || !strcmp(loc, "C") || !strcmp(loc, "POSIX") || !XSupportsLocale())
+        fputs("WallClock :: LOCALE FAILED\n", stderr);
+    // Read in RC_FILE
+    sprintf(RCFILE, "%s/.config/wallclock/rc.conf", getenv("HOME"));
 
     screen_num = DefaultScreen(dis);
     root = RootWindow(dis,screen_num);
     XSetErrorHandler(xerror);
-    trans = TRANSPARENT;
-    if(trans == 0) get_background();
     //background = None; //BlackPixel(dis, screen_num);
     border = WhitePixel(dis, screen_num);
-    width = WIDTH;
-    height = HEIGHT;
-    XGCValues values;
+
+    reload();
+    if(trans == 1) get_background();
 
     win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
     win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));
 
-    realwin = XCreateSimpleWindow(dis, root, POS_X,POS_Y,
+    realwin = XCreateSimpleWindow(dis, root, win_x,win_y,
                   width,height,0,border,None);
 
     // This returns the FD of the X11 display
     x11_fd = ConnectionNumber(dis);
-
-    /* create the hour_h GC to draw the hour hand */
-    values.foreground = getcolor(hour_hand_colour);
-    values.line_width = hh_w;
-    values.line_style = LineSolid;
-    values.cap_style = CapRound;
-    hour_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
-
-    /* create the min_h GC to draw the minute hand */
-    values.foreground = getcolor(minute_hand_colour);
-    values.line_width = mh_w;
-    values.line_style = LineSolid;
-    values.cap_style = CapRound;
-    min_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
-
-    /* create the sec_h GC to draw the second hand */
-    values.foreground = getcolor(second_hand_colour);
-    values.line_width = sh_w;
-    values.line_style = LineSolid;
-    values.cap_style = CapRound;
-    sec_h = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle|GCCapStyle,&values);
-
-    /* create the face_cl GC to draw the clock face */
-    values.foreground = getcolor(clock_face_colour);
-    values.line_width = face_w;
-    values.line_style = LineSolid;
-    face_cl = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
-
-    /* create the face_bg GC to draw the clock face */
-    values.foreground = getcolor(clock_face_background);
-    values.line_width = face_w;
-    values.line_style = LineSolid;
-    face_bg = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
-
-    /* create the tick_m GC to draw the tick marks */
-    values.foreground = getcolor(tick_mark_colour);
-    values.line_width = tm_w;
-    values.line_style = LineSolid;
-    tick_m = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
-
-    /* create the bg_gc GC to draw the background */
-    values.foreground = getcolor(background_colour);
-    values.line_width = 8;
-    values.line_style = LineSolid;
-    bg_gc = XCreateGC(dis, root, GCForeground|GCLineWidth|GCLineStyle,&values);
 
     /* want to accept the delete window protocol */
     wm_del_win = XInternAtom(dis,"WM_DELETE_WINDOW",False);
@@ -304,6 +394,9 @@ int main(){
 
     XMapWindow(dis, realwin);
 
+    KeyCode keyQ = XKeysymToKeycode(dis, XK_q);
+    KeyCode keyR = XKeysymToKeycode(dis, XK_r);
+
     drawface();
     update_hands();
     while(1) {
@@ -312,7 +405,7 @@ int main(){
 
         // Set our timer.  One second sounds good.
         tv.tv_usec = 0;
-        if(clockupdate < 1) tv.tv_sec = 1;
+        if(clockupdate == 1) tv.tv_sec = 1;
         else tv.tv_sec = 30;
 
         // Wait for X Event or a Timer
@@ -325,13 +418,14 @@ int main(){
             XNextEvent(dis, &ev);
             switch(ev.type){
             case Expose:
+                if(ev.xexpose.count > 0) continue;
                 square = (width >= height) ? height-4 : width-4;
-                   XFreePixmap(dis, win);
-                   win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
-                   XFreePixmap(dis, win_face);
-                   win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
-                   drawface();
-                   update_hands();
+                XFreePixmap(dis, win);
+                win = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
+                XFreePixmap(dis, win_face);
+                win_face = XCreatePixmap(dis, root, width, height, DefaultDepth(dis, screen_num));    
+                drawface();
+                update_hands();
                 break;
             case ConfigureNotify:
                 win_x = ev.xconfigure.x;
@@ -345,7 +439,7 @@ int main(){
                 update_hands();
                 break;
             case PropertyNotify:
-                if(trans != 0 || ev.xproperty.atom != id) {
+                if(trans != 1 || ev.xproperty.atom != id) {
                     update_hands();
                     break;
                 }
@@ -354,9 +448,13 @@ int main(){
                 drawface();
                 break;
             case KeyPress:
-                if(ev.xkey.keycode != 24) break;
-                quit();
-                return(0);
+                if(ev.xkey.keycode == keyQ) {
+                    quit();
+                    return(0);
+                } else if(ev.xkey.keycode == keyR) {
+                    reload();
+                }
+                break;
             case ButtonPress:
                 if(ev.xbutton.button != Button3) break;
                 quit();

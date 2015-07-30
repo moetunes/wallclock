@@ -1,7 +1,9 @@
 Wallclock
 
-It's a light, transparent analogue clock.
+It's a light analogue clock that can have a transparent background.
 
-There's defines at the top of the c file to make changing colours and sizes easy.
+The sample.rc.conf should be copied to ~/.config/wallclock/rc.conf and 
+edited to suit. The clock can be updated to use the changes to the rc 
+file with the r key. Close the clock with the q key.
 
 Showing how to have an updatable, double buffered, transparent window.
